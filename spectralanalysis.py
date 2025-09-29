@@ -2,7 +2,8 @@ import scipy.signal as sig
 import numpy as np
 import math
 from scipy.special import jv # Imports Bessel function 
-
+import matplotlib.pyplot as plt
+from scipy.stats import chi2
 
 def spectralFlux(un, vn, x, y, wind, detr):
     ''' CALCULATES SPECTRAL FLUXES USING CONVENTIONAL METHOD (Ayaji et al. 2019)
@@ -68,13 +69,21 @@ def spectralFlux(un, vn, x, y, wind, detr):
 #         specflux[i] = (KEdiv2D[kfilt]).sum()
 
     transfer = np.zeros(len(K1D))
+    # for i in range(K1D.size):
+    #     kfilt =  ((K1D[i] - K1D[0]) < K2D) & (K2D <= K1D[i])
+    #     transfer[i] = (KEtransf2D[kfilt]).sum()
+
     for i in range(K1D.size):
-        kfilt =  ((K1D[i] - K1D[0]) <= K2D) & (K2D <= K1D[i])
-        transfer[i] = (KEtransf2D[kfilt]).sum()
+        kmin = K1D[i] - 0.5 * dK
+        kmax = K1D[i] + 0.5 * dK
+        kfilt = (K2D >= kmin) & (K2D < kmax)
+        transfer[i] = KEtransf2D[kfilt].sum()
     
     specflux = np.cumsum(transfer[::-1])[::-1] # - Get flux
+    divFlux = transfer
     
-    return K1D, specflux
+    return K1D, specflux, divFlux
+
 
 def E2SF2(Ek, k, dk, r):
     '''Converts the isotropic KE spectra to second-order structure function (Xie and Buhler, 2018)
@@ -184,3 +193,112 @@ def Ek2DEkiso(E, k, l, dk, dl):
     Ki2 = Ki2[~np.isnan(Eiso)]    
     Eiso = Eiso[~np.isnan(Eiso)]
     return Eiso, Ki2
+
+
+def decorrelation_times(u, dt=1, plot=False, name='u'):
+    """
+    Compute temporal autocorrelation, e-folding time, integral timescale,
+    and first zero-crossing time.
+    
+    Parameters
+    ----------
+    u : np.ndarray
+        3D array with shape (time, y, x)
+    dt : float
+        Time step (e.g., days)
+    plot : bool
+        If True, plot the mean autocorrelation function
+    name : str
+        Label for the plot
+    
+    Returns
+    -------
+    R_mean : np.ndarray
+        Mean autocorrelation over all spatial points
+    tau_e : float
+        E-folding decorrelation time in same units as dt
+    tau_integral : float
+        Integral timescale
+    tau_zero : float
+        First zero-crossing time in same units as dt
+    """
+    time_len = u.shape[0]
+    
+    # --- Remove temporal mean ---
+    u_anom = u - np.mean(u, axis=0)
+    
+    # --- Zero-pad for FFT efficiency ---
+    n_fft = 2 * time_len
+    U = np.fft.fft(u_anom, n=n_fft, axis=0)
+    
+    # --- Autocorrelation via FFT ---
+    acf = np.fft.ifft(U * np.conj(U), axis=0).real
+    acf = acf[:time_len, :, :]  # keep lags >= 0
+    acf /= acf[0, :, :]         # normalize to 1 at lag=0
+    
+    # --- Mean over all spatial points ---
+    R_mean = np.mean(acf, axis=(1,2))
+    
+    # --- E-folding decorrelation time ---
+    tau_e_idx = np.argmax(R_mean < 1/np.e)
+    tau_e = tau_e_idx * dt
+    
+    # --- Integral timescale ---
+    tau_integral = np.sum(R_mean) * dt
+    
+    # --- First zero-crossing ---
+    zero_crossings = np.where(R_mean <= 0)[0]
+    if len(zero_crossings) > 0:
+        tau_zero = zero_crossings[0] * dt
+    else:
+        tau_zero = np.nan  # never crosses zero
+    
+    # --- Optional plot ---
+    if plot:
+        lags = np.arange(time_len) * dt
+        plt.figure(figsize=(6,4))
+        plt.plot(lags, R_mean, label=f'Mean autocorrelation ({name})', color='blue')
+        plt.axvline(tau_e, color='red', linestyle='--', label='e-folding time')
+        plt.axhline(1/np.e, color='red', linestyle=':')
+        plt.axvline(tau_integral, color='green', linestyle='--', label='Integral timescale')
+        if not np.isnan(tau_zero):
+            plt.axvline(tau_zero, color='purple', linestyle='--', label='First zero-crossing')
+        plt.xlabel('Time lag')
+        plt.ylabel('Autocorrelation')
+        plt.title(f'Temporal autocorrelation: {name}')
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+    
+    return R_mean, tau_e, tau_integral, tau_zero
+
+def spectrum_confidence_interval(E_mean, M, alpha=0.05):
+    """
+    Compute chi-square confidence intervals for a mean spectrum.
+    
+    Parameters
+    ----------
+    E_mean : array-like
+        Mean spectrum values (1D array).
+    M : int
+        Estimated number of independent segments.
+    alpha : float, optional
+        Significance level (default = 0.05 for 95% CI).
+    
+    Returns
+    -------
+    CI_lower : ndarray
+        Lower confidence interval bound for E_mean.
+    CI_upper : ndarray
+        Upper confidence interval bound for E_mean.
+    """
+    nu = 2 * M  # degrees of freedom
+    
+    chi2_lower = chi2.ppf(alpha/2, nu)
+    chi2_upper = chi2.ppf(1 - alpha/2, nu)
+    
+    CI_lower = nu * E_mean / chi2_upper
+    CI_upper = nu * E_mean / chi2_lower
+    
+    return CI_lower, CI_upper

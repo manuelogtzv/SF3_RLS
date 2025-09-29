@@ -3,6 +3,7 @@ import math
 import numpy as np
 import xarray as xr
 import scipy as sp
+from scipy.integrate import simpson as simps
 
 def RLS(Y, W, P, X):
     
@@ -133,7 +134,6 @@ def calcFk(eps, k, dk):
         eps: KE injection rates; first element is eps_u and next ones are eps_j increasing in wavenumber k
         k: wavenumber bins
         dk: delta k'''
-        
 
     # Calculat KE flux
     Fk = np.zeros((len(k),))
@@ -144,28 +144,68 @@ def calcFk(eps, k, dk):
         
     return Fk
 
-def Fk2SF3(Flux, k, dk, r):
-    '''Converts the KE flux to structure function using a Hankel Transform (Xie and Buhler, 2018)
+# def Fk2SF3(Flux, k, dk, r):
+#     '''Converts the KE flux to structure function using a Hankel Transform (Xie and Buhler, 2018)
        
-       Input:
-       Flux: Spectral Flux
-       k: wavenumber array
-       dk: wavenumber resolution array
-       r: distance bins
+#        Input:
+#        Flux: Spectral Flux
+#        k: wavenumber array
+#        dk: wavenumber resolution array
+#        r: distance bins
        
-       Output:
-       SF3: third-order structure function'''
+#        Output:
+#        SF3: third-order structure function'''
     
-    flux_spec = Flux
-    k_spec = k
+#     flux_spec = Flux
+#     k_spec = k
 
-    rspec, kkspec = np.meshgrid(r, k_spec)
-    J2 = jv(2, rspec*kkspec)
-    intl = J2.T*flux_spec*dk
-    intl = intl*1/k_spec
-    inlf = np.sum(intl, axis=1)
+#     rspec, kkspec = np.meshgrid(r, k_spec)
+#     J2 = jv(2, rspec*kkspec)
+#     intl = J2.T*flux_spec*dk
+#     intl = intl*1/k_spec
+#     inlf = np.sum(intl, axis=1)
     
-    return -4*r*inlf
+#     return -4*r*inlf
+
+
+
+def Fk2SF3(Flux, k, dk, r):
+    """
+    Converts the KE flux to the third-order structure function using a Hankel Transform
+    (Xie and Bühler, 2018) with Simpson's rule for higher-accuracy integration.
+
+    Parameters
+    ----------
+    Flux : ndarray
+        Spectral flux F(k).
+    k : ndarray
+        Wavenumber array (1D).
+    dk : ndarray
+        Wavenumber resolution (1D, same size as k).
+    r : ndarray
+        Distance bins.
+
+    Returns
+    -------
+    SF3 : ndarray
+        Third-order structure function D3(r).
+    """
+    k = np.asarray(k)
+    r = np.asarray(r)
+    Flux = np.asarray(Flux)
+
+    # Mesh for J2(k*r)
+    rspec, kspec = np.meshgrid(r, k, indexing='ij')
+    J2 = jv(2, kspec * rspec)
+
+    # Integrand: F(k)/k * J2(k*r)
+    integrand = (Flux / k)[:, None] * J2.T  # shape: (k, r)
+
+    # Simpson's rule along k dimension
+    D3 = -4 * r * simps(integrand, k, axis=0)
+
+    return D3
+
 
 def PnoiseW(X, P, W):
     # Equation 10 from Bruce's notes
