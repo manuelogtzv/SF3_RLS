@@ -42,6 +42,5 @@ This repository provides code to estimate **structure functions (SFs)** and **ki
 ## References
 If you use this code, please cite:  
 
-- Gutierrez-Villanueva, M. O., Cornuelle, B., Gille, S. T., & Balwada, D. (2025). An Improved Methodology to Estimate Cross-Scale Kinetic Energy Transfers from Third-Order Structure Functions using Regularized Least-Squares. [https://doi.org/10.31223/X5M71S](https://doi.org/10.31223/X5M71S)
-
+- Gutierrez-Villanueva, M. O., B. D. Cornuelle, S. T. Gille, M. R. Mazloff, and D. Balwada, 2026: An improved methodology to estimate cross-scale kinetic energy transfers from third-order structure functions using regularized least-squares. J. Atmos. Oceanic Technol., , e250025, https://doi.org/10.1175/JTECH-D-25-0025.1, in press.
 ---
